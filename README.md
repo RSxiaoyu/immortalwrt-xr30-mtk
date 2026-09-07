@@ -1,6 +1,6 @@
 # ImmortalWrt 24.10 for CMCC XR30 (MTK 闭源驱动)
 
-[![Build](https://github.com/RSxiaoyu/xr30-ubootmod-firmware/actions/workflows/openwrt-builder.yml/badge.svg)](https://github.com/RSxiaoyu/xr30-ubootmod-firmware/actions/workflows/openwrt-builder.yml)
+[![Build](https://github.com/RSxiaoyu/immortalwrt-xr30-mtk/actions/workflows/build.yml/badge.svg)](https://github.com/RSxiaoyu/immortalwrt-xr30-mtk/actions/workflows/build.yml)
 
 基于 [padavanonly/immortalwrt-mt798x-6.6](https://github.com/padavanonly/immortalwrt-mt798x-6.6) 的 **中国移动 CMCC XR30** 专属闭源驱动固件构建仓库。
 
