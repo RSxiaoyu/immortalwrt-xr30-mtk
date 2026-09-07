@@ -1,0 +1,183 @@
+name: Build ImmortalWrt (MTK Proprietary) for CMCC XR30
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: 'Force build even if upstream has no changes'
+        required: false
+        default: 'true'
+        type: boolean
+  schedule:
+    - cron: '0 21 * * 0' # Weekly at 05:00 Beijing time every Monday
+  push:
+    branches:
+      - main
+    paths:
+      - '.config'
+      - 'diy-*.sh'
+      - '.github/workflows/build.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REPO_URL: https://github.com/padavanonly/immortalwrt-mt798x-6.6
+  REPO_BRANCH: openwrt-24.10-6.6
+  TZ: Asia/Shanghai
+
+permissions:
+  contents: write
+
+jobs:
+  check_upstream:
+    name: Check Upstream Updates
+    runs-on: ubuntu-22.04
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+      upstream_sha: ${{ steps.check.outputs.upstream_sha }}
+      upstream_short_sha: ${{ steps.check.outputs.upstream_short_sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check upstream commit
+        id: check
+        run: |
+          UPSTREAM_SHA=$(git ls-remote ${{ env.REPO_URL }}.git refs/heads/${{ env.REPO_BRANCH }} | awk '{print $1}')
+          SHORT_SHA="${UPSTREAM_SHA:0:7}"
+          echo "upstream_sha=$UPSTREAM_SHA" >> $GITHUB_OUTPUT
+          echo "upstream_short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "push" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          else
+            if gh release list --repo "${{ github.repository }}" --json tagName -q ".[].tagName" | grep -q "${SHORT_SHA}"; then
+              echo "Release for upstream commit ${SHORT_SHA} already exists. Skipping build."
+              echo "should_build=false" >> $GITHUB_OUTPUT
+            else
+              echo "New upstream commit ${SHORT_SHA} detected. Starting build."
+              echo "should_build=true" >> $GITHUB_OUTPUT
+            fi
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build:
+    name: Build Firmware
+    needs: check_upstream
+    if: needs.check_upstream.outputs.should_build == 'true'
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set build variables
+        id: vars
+        run: |
+          echo "build_date=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
+          echo "release_tag=v24.10-${{ needs.check_upstream.outputs.upstream_short_sha }}-$(date +'%Y%m%d%H%M')" >> $GITHUB_OUTPUT
+
+      - name: Initialize build environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install build-essential clang flex bison gawk gettext \
+            device-tree-compiler libncurses-dev libssl-dev python3-distutils \
+            python3-pyelftools python3-setuptools rsync swig unzip zlib1g-dev
+          sudo timedatectl set-timezone "$TZ"
+          sudo mkdir -p /workdir
+          sudo chown $USER:$GROUPS /workdir
+
+      - name: Clone upstream source
+        working-directory: /workdir
+        run: |
+          git clone --depth 1 -b ${{ env.REPO_BRANCH }} ${{ env.REPO_URL }} openwrt
+          ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+
+      - name: Load custom feeds (diy-part1)
+        working-directory: openwrt
+        run: |
+          [ -f "$GITHUB_WORKSPACE/diy-part1.sh" ] && chmod +x "$GITHUB_WORKSPACE/diy-part1.sh" && "$GITHUB_WORKSPACE/diy-part1.sh"
+
+      - name: Update and install feeds
+        working-directory: openwrt
+        run: |
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Configure firmware (diy-part2)
+        working-directory: openwrt
+        run: |
+          cp "$GITHUB_WORKSPACE/.config" .config
+          [ -f "$GITHUB_WORKSPACE/diy-part2.sh" ] && chmod +x "$GITHUB_WORKSPACE/diy-part2.sh" && "$GITHUB_WORKSPACE/diy-part2.sh"
+          make defconfig
+
+      - name: Cache package downloads
+        uses: actions/cache@v4
+        with:
+          path: openwrt/dl
+          key: ${{ runner.os }}-openwrt-mtk-dl-${{ env.REPO_BRANCH }}-${{ hashFiles('openwrt/feeds.conf.default') }}
+          restore-keys: |
+            ${{ runner.os }}-openwrt-mtk-dl-${{ env.REPO_BRANCH }}-
+            ${{ runner.os }}-openwrt-mtk-dl-
+
+      - name: Download package dependencies
+        working-directory: openwrt
+        run: |
+          make download -j8
+          find dl -size -1024c -exec rm -f {} \;
+
+      - name: Compile firmware
+        working-directory: openwrt
+        run: |
+          echo "Building on $(nproc) threads..."
+          make -j$(nproc) || make -j1 V=s
+
+      - name: Prepare release files
+        id: prepare
+        run: |
+          mkdir -p release
+          cd openwrt/bin/targets/mediatek/filogic
+          cp -v *cmcc_xr30-nand* "$GITHUB_WORKSPACE/release/"
+          cd "$GITHUB_WORKSPACE/release"
+          sha256sum * > sha256sums
+          ls -la "$GITHUB_WORKSPACE/release"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImmortalWrt-XR30-MTK-Firmware
+          path: release/*
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.vars.outputs.release_tag }}
+          name: "ImmortalWrt 24.10 MTK for CMCC XR30 (${{ steps.vars.outputs.build_date }})"
+          body: |
+            ### 固件信息
+            - **适用设备**: 中国移动 CMCC XR30 (MT7981B / 512M DDR4 / 128M SPI-NAND / USB 3.0)
+            - **上游源码**: [padavanonly/immortalwrt-mt798x-6.6:${{ env.REPO_BRANCH }}](${{ env.REPO_URL }}/tree/${{ env.REPO_BRANCH }})
+            - **上游 Commit**: [${{ needs.check_upstream.outputs.upstream_short_sha }}](${{ env.REPO_URL }}/commit/${{ needs.check_upstream.outputs.upstream_sha }})
+            - **内核版本**: Linux 6.6
+            - **无线驱动**: MTK 原厂闭源驱动 (`mt7915_mtwifi`)
+            - **适配引导**: [bl-mt798x-xr30](https://github.com/RSxiaoyu/bl-mt798x-xr30) (ubootmod 原生 MTD 直通)
+
+            ### 文件说明
+            - `*sysupgrade.bin`: 升级固件（通过 sysupgrade 或 U-Boot 控制台直接升级）
+            - `*factory.bin`: 首次出厂刷写固件
+            - `sha256sums`: 文件校验值
+
+            ### 默认配置
+            - **后台地址**: `192.168.1.1`
+            - **默认用户**: `root`
+            - **默认密码**: 无密码
+            - **默认主题**: Argon
+          files: release/*
