@@ -129,8 +129,12 @@ jobs:
       - name: Download package dependencies
         working-directory: openwrt
         run: |
-          make download -j8
+          export CURL_OPTIONS="--speed-limit 1000 --speed-time 15 --max-time 180"
+          export WGET_OPTIONS="--timeout=15 --tries=2"
+          echo "Downloading dependencies in parallel..."
+          make download -j8 || make download -j2 || true
           find dl -size -1024c -exec rm -f {} \;
+          ls -lh dl/ | head -n 30
 
       - name: Compile firmware
         working-directory: openwrt
