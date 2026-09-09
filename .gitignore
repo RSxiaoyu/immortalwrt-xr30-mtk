@@ -1,0 +1,12 @@
+# OpenWrt Buildroot
+.config.old
+.config.cache
+dl/
+bin/
+build_dir/
+staging_dir/
+tmp/
+feeds/
+*.orig
+*.rej
+*~
