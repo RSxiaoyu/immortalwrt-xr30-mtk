@@ -24,7 +24,7 @@ concurrency:
 
 env:
   REPO_URL: https://github.com/padavanonly/immortalwrt-mt798x-6.6
-  REPO_BRANCH: openwrt-24.10
+  REPO_BRANCH: openwrt-24.10-6.6
   CONFIG_FILE: .config
   DIY_P2_SH: diy-part2.sh
   TZ: Asia/Shanghai
