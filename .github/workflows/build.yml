@@ -57,30 +57,16 @@ jobs:
           echo "upstream_sha=$UPSTREAM_SHA" >> $GITHUB_OUTPUT
           echo "upstream_short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [ "${{ inputs.force_build }}" = "true" ]; then
-              echo "Manual force build requested. Starting build."
-              echo "should_build=true" >> $GITHUB_OUTPUT
-            else
-              if gh release list --repo "${{ github.repository }}" --json tagName -q ".[].tagName" | grep -q "${SHORT_SHA}"; then
-                echo "Release for upstream commit ${SHORT_SHA} already exists. Skipping build."
-                echo "should_build=false" >> $GITHUB_OUTPUT
-              else
-                echo "New upstream commit ${SHORT_SHA} detected. Starting build."
-                echo "should_build=true" >> $GITHUB_OUTPUT
-              fi
-            fi
-          elif [ "${{ github.event_name }}" = "push" ]; then
-            echo "Push event detected. Starting build."
+          # 构建条件：强制构建，或该上游 commit 尚无对应 Release（push/schedule 统一走查重，避免重复 3h 构建）
+          if [ "${{ inputs.force_build }}" = "true" ]; then
+            echo "Force build requested."
             echo "should_build=true" >> $GITHUB_OUTPUT
+          elif gh release list --repo "${{ github.repository }}" --json tagName -q ".[].tagName" | grep -q "${SHORT_SHA}"; then
+            echo "Release for upstream commit ${SHORT_SHA} already exists. Skipping build."
+            echo "should_build=false" >> $GITHUB_OUTPUT
           else
-            if gh release list --repo "${{ github.repository }}" --json tagName -q ".[].tagName" | grep -q "${SHORT_SHA}"; then
-              echo "Release for upstream commit ${SHORT_SHA} already exists. Skipping build."
-              echo "should_build=false" >> $GITHUB_OUTPUT
-            else
-              echo "New upstream commit ${SHORT_SHA} detected. Starting build."
-              echo "should_build=true" >> $GITHUB_OUTPUT
-            fi
+            echo "New upstream commit ${SHORT_SHA} detected. Starting build."
+            echo "should_build=true" >> $GITHUB_OUTPUT
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
