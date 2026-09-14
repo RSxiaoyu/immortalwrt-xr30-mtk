@@ -149,8 +149,9 @@ jobs:
           tag_name: ${{ steps.vars.outputs.release_tag }}
           name: "ImmortalWrt 24.10 MTK for CMCC XR30 (${{ steps.vars.outputs.build_date }})"
           body: |
-            - **设备**: CMCC XR30 (cmcc_xr30-nand，上游内置设备)
-            - **上游**: [padavanonly/immortalwrt-mt798x-6.6](https://github.com/padavanonly/immortalwrt-mt798x-6.6) @ `${{ needs.check_upstream.outputs.upstream_sha }}` (分支 `openwrt-24.10-6.6`，Linux 6.6 + MTK SDK)
-            - **本仓库改动**: 仅增量 .config 与两行 sed (默认 IP / Argon 主题)，零设备文件
-            - **驱动**: MediaTek mt_wifi 闭源（开源 mt76 方案见 [immortalwrt-xr30](https://github.com/RSxiaoyu/immortalwrt-xr30)）
+            - **硬件**: CMCC XR30 (MT7981B / 512M / 128M / USB 3.0)
+            - **上游**: [padavanonly/immortalwrt-mt798x-6.6](https://github.com/padavanonly/immortalwrt-mt798x-6.6) @ `${{ needs.check_upstream.outputs.upstream_sha }}` (分支 `openwrt-24.10-6.6`, Linux 6.6)
+            - **驱动**: MediaTek mt_wifi 原厂闭源无线驱动
+            - **配置**: 纯增量 .config + 原厂射频调优 (开源 mt76 方案见 [immortalwrt-xr30](https://github.com/RSxiaoyu/immortalwrt-xr30))
+            - **刷写**: U-Boot Web (`192.168.1.1`) 或系统内 `sysupgrade`
           files: release/*
